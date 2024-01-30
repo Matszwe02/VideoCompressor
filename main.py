@@ -21,13 +21,16 @@ def exitprogram():
 atexit.register(exitprogram)
 
 def get_num_frames(video_file):
-   command = ["ffmpeg", "-i", video_file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-y", "/dev/null"]
-   output = subprocess.check_output(command, stderr=subprocess.STDOUT)
-   lines = output.decode().split('\n')
-   for line in lines:
-       if 'frame=' in line:
-           num_frames = line.split('frame=')[1].split('fps=')[0]
-           return int(num_frames.strip())
+    try:
+        command = ["ffmpeg", "-i", video_file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-y", "/dev/null"]
+        output = subprocess.check_output(command, stderr=subprocess.STDOUT)
+        lines = output.decode().split('\n')
+        for line in lines:
+            if 'frame=' in line:
+                num_frames = line.split('frame=')[1].split('fps=')[0]
+                return int(num_frames.strip())
+    except Exception:
+        return 0
 
 # num_frames = get_num_frames('your_video_file.mp4')
 # print(f'Number of frames: {num_frames}')
