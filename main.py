@@ -8,12 +8,32 @@ import shutil
 import psutil
 import time
 import atexit
+import shlex
+from inputimeout import inputimeout, TimeoutOccurred
+
 
 # codec - h264 or libx265
 codec = 'h264'
 
 # Constant Rate Factor - how much it's compressed - default 24
 crf = 24
+
+extension = 'mp4'
+
+command = f'-vcodec {codec} -acodec aac -crf {crf}'
+
+try: customparams = inputimeout(prompt="Use custom params? (y/N): ", timeout=5)
+except TimeoutOccurred: customparams = 'N'; print("Using default parameters.")
+
+
+if customparams.lower() == 'y':
+    print(f'default extension: {extension}')
+    new_extension = input("Video final extension: ")
+    if new_extension.__len__() > 1: extension = new_extension
+    print(f'default command: {command}')
+    new_command = input("command: ")
+    if new_command.__len__() > 1: command = new_command
+
 
 def exitprogram():
     os.remove('./LOCK')
@@ -43,9 +63,8 @@ def compress_file(video_file):
     num_frames = get_num_frames(video_file)
     # clip.close()
 
-    final_filename = '.'.join(video_file.split('.')[:-1]) + '.mp4'
-
-    cmd = ['ffmpeg', '-y', '-i', video_file, '-vcodec', codec, '-acodec','aac', '-crf', str(crf), './temp.mp4']
+    final_filename = '.'.join(video_file.split('.')[:-1]) + '.' + extension
+    cmd = shlex.split(f'ffmpeg -y -i "{video_file}" {command} ./temp.{extension}')
     
     ffmpeg = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     
@@ -69,7 +88,7 @@ def compress_file(video_file):
     while True:
         try:
             os.remove(video_file)
-            shutil.move('./temp.mp4', final_filename)
+            shutil.move('./temp.' + extension, final_filename)
             break
         except PermissionError:
             print('warning! PermissionError. Retrying in 5s...')
