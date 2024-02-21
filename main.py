@@ -9,7 +9,9 @@ import psutil
 import time
 import atexit
 import shlex
-from inputimeout import inputimeout, TimeoutOccurred
+
+try: from inputimeout import inputimeout, TimeoutOccurred
+except ImportError: print("inputimeout not found:\npip install inputimeout")
 
 
 # codec - h264 or libx265
