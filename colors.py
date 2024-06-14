@@ -1,0 +1,28 @@
+def red(s): return color_handler('91', s)
+def green(s): return color_handler('92', s)
+def yellow(s): return color_handler('93', s)
+def blue(s): return color_handler('94', s)
+def purple(s): return color_handler('95', s)
+def cyan(s): return color_handler('96', s)
+def lightGray(s): return color_handler('97', s)
+def black(s): return color_handler('98', s)
+
+def bg_red(s): return color_handler('41', s)
+def bg_green(s): return color_handler('42', s)
+def bg_yellow(s): return color_handler('43', s)
+def bg_blue(s): return color_handler('44', s)
+def bg_purple(s): return color_handler('45', s)
+def bg_cyan(s): return color_handler('46', s)
+def bg_lightGray(s): return color_handler('47', s)
+def bg_black(s): return color_handler('48', s)
+
+def bold(s): return color_handler('1', s)
+def dark(s): return color_handler('2', s)
+def italic(s): return color_handler('3', s)
+def underline(s): return color_handler('4', s)
+def invert(s): return color_handler('7', s)
+def crossout(s): return color_handler('9', s)
+def double_underline(s): return color_handler('21', s)
+
+def color_handler(code, s:str):
+    return(f'\033[{code}m{str(s).replace("\033[00m", f"\033[{code}m")}\033[00m')
