@@ -25,4 +25,4 @@ def crossout(s): return color_handler('9', s)
 def double_underline(s): return color_handler('21', s)
 
 def color_handler(code, s:str):
-    return(f'\033[{code}m{str(s).replace("\033[00m", f"\033[{code}m")}\033[00m')
+    return('\033[' + code + 'm' + str(s).replace("\033[00m", f"\033[{code}m") + '\033[00m')

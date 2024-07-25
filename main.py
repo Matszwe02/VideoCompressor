@@ -1,7 +1,6 @@
 import sys
 import subprocess
 from pathlib import Path
-from moviepy.editor import VideoFileClip
 from tqdm import tqdm
 import os
 import shutil
