@@ -4,38 +4,46 @@ from pathlib import Path
 from tqdm import tqdm
 import os
 import shutil
-import psutil
 import time
-import atexit
 import shlex
 import uuid
 import colors
 from tkinter import filedialog
 
 
-# codec - h264 or libx265
 codec = 'h264'
+"codec - h264 or libx265"
 
-# Constant Rate Factor - how much it's compressed - default 24
 crf = 24
+"Constant Rate Factor - how much it's compressed - default 24"
 
 extension = 'mp4'
 
 command = f'-vcodec {codec} -acodec aac -crf {crf}'
 
+vid_format = ''
+"Pixel format of video, for example 'scale=1080:-1'"
+
+hwaccel = ''
+"HW-accel config"
+
 
 
 def get_num_frames(video_file):
+    
     try:
-        command = ["ffmpeg", "-i", video_file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-y", "/dev/null"]
-        output = subprocess.check_output(command, stderr=subprocess.STDOUT)
-        lines = output.decode().split('\n')
-        for line in lines:
-            if 'frame=' in line:
-                num_frames = line.split('frame=')[1].split('fps=')[0]
-                return int(num_frames.strip())
+        frame_command = ["ffmpeg", "-i", video_file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-y", "/dev/null"]
+        frame_output = subprocess.check_output(frame_command, stderr=subprocess.STDOUT)
+        time.sleep(0.5)
+        lines = frame_output.decode()
+        if 'frame=' in lines:
+            num_frames = lines.split('frame=')[1].split('fps')[0]
+            return int(num_frames)
+        
     except Exception:
-        return 0
+        pass
+    
+    return 0
 
 
 def compress_file(video_file):
@@ -45,26 +53,48 @@ def compress_file(video_file):
     vid_name = './' + uuid.uuid4().hex + '.'  + extension
 
     final_filename = '.'.join(video_file.split('.')[:-1]) + '.' + extension
-    cmd = shlex.split(f'ffmpeg -y -i "{video_file}" {command} {vid_name}')
+    cmd = shlex.split(f'ffmpeg{hwaccel} -y -i "{video_file}" {command} {vid_name}')
     
+    print(colors.cyan(' '.join(cmd)))
+        
+    lines = ''
+        
     ffmpeg = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     
-    xint = 0
+    try:
+        with tqdm(total=num_frames, unit='frames') as pbar:
+            xint = 0
+            for line in iter(ffmpeg.stdout.readline, ''):
+                lines += line
+                x = line[6:]
+                x = x[:x.find('fps=')]
+                try: xint = int(x.strip())
+                except ValueError: continue
+                pbar.n = min(xint, num_frames)
+                pbar.update(0)
+        
+        returncode = ffmpeg.wait()
+        ffmpeg.communicate()
+        pbar.n = num_frames
+        pbar.update(0)
+        ffmpeg.terminate()
+        
+        if returncode > 0:
+            print(colors.red(f'FFMPEG ERROR with {video_file} :\n'))
+            time.sleep(1)
+            print(colors.bg_red(lines))
+            time.sleep(1)
+            os.remove(vid_name)
+            return
     
-    with tqdm(total=num_frames, unit='frames') as pbar:
-        for line in iter(ffmpeg.stdout.readline, ''):
-            x = line[6:]
-            x = x[:x.find('fps=')]
-            try: xint = int(x.strip())
-            except ValueError: continue
-            pbar.n = min(xint, num_frames)
-            pbar.update(0)
-    
-    ffmpeg.wait()
-    ffmpeg.communicate()
-    pbar.n = num_frames
-    pbar.update(0)
-    ffmpeg.terminate()
+    except BaseException as e:
+        
+        ffmpeg.wait()
+        ffmpeg.communicate()
+        ffmpeg.terminate()
+        
+        os.remove(vid_name)
+        raise e
     
     while True:
         try:
@@ -93,7 +123,7 @@ if __name__ == "__main__":
             args.append(file)
 
     print(f"using default params: {colors.green(command)}")
-    print(colors.cyan("(Ctrl + C to set custom)"))
+    print(colors.cyan("(Ctrl + C to set custom)\n"))
     try:
         time.sleep(5)
         customparams = 'N'
@@ -102,18 +132,38 @@ if __name__ == "__main__":
 
 
     if customparams.lower() == 'y':
-        print(f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}. Type {colors.green('h')} to set {colors.cyan('h264')}. Type {colors.green('l')} to set {colors.cyan('libx265')}. Type {colors.green('c')} to set custom command")
+        print(f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n{colors.green('l')} to set {colors.cyan('libx265')} (default {colors.cyan('h264')}), \n{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}). \nYou can combine them, for example {colors.green('24lHD')},\n{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')}\n\nType {colors.green('c')} to set custom command")
         x = input(colors.green('> '))
         
-        if x == 'h': codec = 'h264'
-        elif x == 'l': codec = 'libx265'
-        elif x == 'c': pass
-        else:
-            crf = int(x)
-            
-        command = f'-vcodec {codec} -acodec aac -crf {crf}'
+        if 'l' in x: codec = 'libx265'
         
-        if x == 'c':
+        scale_str = 'scale'
+        
+        digits = ''.join(filter(str.isdigit, x))
+        if digits and int(digits) in range(0, 51):
+            crf = int(digits)
+        
+        crf_str = f'-crf {crf}'
+        
+        if 'h' in x:
+            hwaccel = " -hwaccel cuda -hwaccel_output_format cuda"
+            codec = 'h264_nvenc'
+            scale_str = 'scale_cuda'
+            crf_str = f'-cq:v {crf}'
+        
+        
+        if 'FHD' in x: vid_format = scale_str + '=1080:-1'
+        elif 'HD' in x: vid_format = scale_str + '=720:-1'
+        elif 'SD' in x: vid_format = scale_str + '=480:-1'
+        
+        
+        command = f'-vcodec {codec} -acodec aac {crf_str}'
+        
+        if vid_format != '':
+            command += ' -vf ' + vid_format
+        
+        
+        if 'c' in x:
             print(f'default extension: {colors.green(extension)}')
             new_extension = input("Video final extension: ")
             if new_extension.__len__() > 1: extension = new_extension
