@@ -151,7 +151,19 @@ if __name__ == "__main__":
 
 
     if customparams.lower() == 'y':
-        print(f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n{colors.green('l')} to set {colors.cyan('libx265')} (default {colors.cyan('h264')}), \n{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}),\n{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')},\n{colors.green('n')} to create a new file (without overriding current one).\n\nYou can combine them, for example {colors.green('24lHD')}\n{colors.cyan('24')} is good HD quality and {colors.cyan('42')} is acceptable SD quality for {colors.cyan('h264')} and {colors.cyan('libx265')}\n\nType {colors.green('c')} to set custom command\n")
+        print(
+            f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n" \
+            f"{colors.green('l')} to set {colors.cyan('libx265')} (default {colors.cyan('h264')}), \n" \
+            f"{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}),\n" \
+            f"{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')},\n" \
+            f"{colors.green('n')} to create a new file (without overriding current one).\n" \
+            f"\n" \
+            f"You can combine them, for example {colors.green('24lHD')}\n" \
+            f"{colors.cyan('24')} is good HD quality and {colors.cyan('42')} is acceptable SD quality for {colors.cyan('h264')} and {colors.cyan('libx265')}\n" \
+            f"\n" \
+            f"Type {colors.green('c')} to set custom command\n"
+        )
+        
         x = input(colors.green('> '))
         
         if 'l' in x: codec = 'libx265'
