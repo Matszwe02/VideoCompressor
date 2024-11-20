@@ -19,6 +19,8 @@ crf = 24
 
 extension = 'mp4'
 
+new_video_append = ''
+
 command = f'-vcodec {codec} -acodec aac -crf {crf}'
 
 vid_format = ''
@@ -29,13 +31,25 @@ hwaccel = ''
 
 
 
+def check_file_name(name: str):
+    base, ext = os.path.splitext(name)
+    new_name = f"{base}{ext}"
+    
+    i = 1
+    
+    while os.path.exists(new_name):
+        new_name = f"{base}{i}{ext}"
+        i += 1
+    return new_name
+
+
 def get_num_frames(video_file):
     
     try:
         frame_command = ["ffmpeg", "-i", video_file, "-map", "0:v:0", "-c", "copy", "-f", "null", "-y", "/dev/null"]
-        frame_output = subprocess.check_output(frame_command, stderr=subprocess.STDOUT)
-        time.sleep(0.5)
-        lines = frame_output.decode()
+        result = subprocess.run(frame_command, capture_output=True, text=True)
+        
+        lines = result.stdout + result.stderr
         if 'frame=' in lines:
             num_frames = lines.split('frame=')[1].split('fps')[0]
             return int(num_frames)
@@ -52,7 +66,7 @@ def compress_file(video_file):
     
     vid_name = './' + uuid.uuid4().hex + '.'  + extension
 
-    final_filename = '.'.join(video_file.split('.')[:-1]) + '.' + extension
+    final_filename = '.'.join(video_file.split('.')[:-1]) + new_video_append + '.' + extension
     cmd = shlex.split(f'ffmpeg{hwaccel} -y -i "{video_file}" {command} {vid_name}')
     
     print(colors.cyan(' '.join(cmd)))
@@ -98,7 +112,12 @@ def compress_file(video_file):
     
     while True:
         try:
-            os.remove(video_file)
+            if new_video_append == '':
+                os.remove(video_file)
+            else:
+                final_filename = check_file_name(final_filename)
+                print('File saved under name "' + colors.green(final_filename) + '"')
+            
             shutil.move(vid_name, final_filename)
             break
         except PermissionError:
@@ -132,7 +151,7 @@ if __name__ == "__main__":
 
 
     if customparams.lower() == 'y':
-        print(f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n{colors.green('l')} to set {colors.cyan('libx265')} (default {colors.cyan('h264')}), \n{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}). \nYou can combine them, for example {colors.green('24lHD')},\n{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')}\n\nType {colors.green('c')} to set custom command")
+        print(f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n{colors.green('l')} to set {colors.cyan('libx265')} (default {colors.cyan('h264')}), \n{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}),\n{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')},\n{colors.green('n')} to create a new file (without overriding current one).\n\nYou can combine them, for example {colors.green('24lHD')}\n{colors.cyan('24')} is good HD quality and {colors.cyan('42')} is acceptable SD quality for {colors.cyan('h264')} and {colors.cyan('libx265')}\n\nType {colors.green('c')} to set custom command\n")
         x = input(colors.green('> '))
         
         if 'l' in x: codec = 'libx265'
@@ -155,6 +174,8 @@ if __name__ == "__main__":
         if 'FHD' in x: vid_format = scale_str + '=1080:-1'
         elif 'HD' in x: vid_format = scale_str + '=720:-1'
         elif 'SD' in x: vid_format = scale_str + '=480:-1'
+        
+        if 'n' in x: new_video_append = '_copy'
         
         
         command = f'-vcodec {codec} -acodec aac {crf_str}'
