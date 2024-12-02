@@ -1,3 +1,6 @@
+# FFMPEG version = 7.1 essentials build from https://www.gyan.dev/ffmpeg/builds/
+
+
 import sys
 import subprocess
 from pathlib import Path
@@ -28,6 +31,9 @@ vid_format = ''
 
 hwaccel = ''
 "HW-accel config"
+
+filter_str = ''
+"FFMPEG filters"
 
 
 
@@ -154,11 +160,13 @@ if __name__ == "__main__":
         print(
             f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n" \
             f"{colors.green('HE')} to set {colors.cyan('HEVC/h265')} (default {colors.cyan('h264')}), \n" \
+            f"{colors.green('AV')} to set {colors.cyan('AV1')}, \n" \
             f"{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}),\n" \
+            f"{colors.green('f')} to set framerate to {colors.cyan('30fps')},\n" \
             f"{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')},\n" \
             f"{colors.green('n')} to create a new file (without overriding current one).\n" \
             f"\n" \
-            f"You can combine them, for example {colors.green('24lHD')}\n" \
+            f"You can combine them, for example {colors.green('HEhn24HD')}\n" \
             f"{colors.cyan('24')} is good HD quality and {colors.cyan('42')} is acceptable SD quality for {colors.cyan('h264')} and {colors.cyan('HEVC')}\n" \
             f"\n" \
             f"Type {colors.green('c')} to set custom command\n"
@@ -166,12 +174,18 @@ if __name__ == "__main__":
         
         x = input(colors.green('> '))
         
-        if 'HE' in x: codec = 'libx265'
-        
         scale_str = 'scale'
         
+        if 'HE' in x: codec = 'libx265'
+        if 'AV' in x: codec = 'libaom-av1'
+        
+        if 'f' in x: filter_str += 'fps=30'
+        
+        max_crf = 51
+        if codec == 'libaom-av1': max_crf = 63
+        
         digits = ''.join(filter(str.isdigit, x))
-        if digits and int(digits) in range(0, 51):
+        if digits and int(digits) in range(0, max_crf):
             crf = int(digits)
         
         crf_str = f'-crf {crf}'
@@ -179,15 +193,16 @@ if __name__ == "__main__":
         if 'h' in x:
             hwaccel = " -hwaccel cuda -hwaccel_output_format cuda"
             if codec == 'libx265': codec = "hevc_nvenc"
+            elif codec == 'libaom-av1': codec = "av1_nvenc"
             else: codec = 'h264_nvenc'
             
             scale_str = 'scale_cuda'
             crf_str = f'-cq:v {crf}'
         
         
-        if 'FHD' in x: vid_format = scale_str + '=1080:-1'
-        elif 'HD' in x: vid_format = scale_str + '=720:-1'
-        elif 'SD' in x: vid_format = scale_str + '=480:-1'
+        if 'FHD' in x: vid_format = scale_str + '=-1:1080'
+        elif 'HD' in x: vid_format = scale_str + '=-1:720'
+        elif 'SD' in x: vid_format = scale_str + '=-1:480'
         
         if 'n' in x: new_video_append = '_copy'
         
@@ -197,6 +212,8 @@ if __name__ == "__main__":
         if vid_format != '':
             command += ' -vf ' + vid_format
         
+        if filter_str != '':
+            command += ' -filter:v ' + filter_str
         
         if 'c' in x:
             print(f'default extension: {colors.green(extension)}')
@@ -206,7 +223,10 @@ if __name__ == "__main__":
             new_command = input("command: ")
             if new_command.__len__() > 1: command = new_command
         
-        print('New command: ' + colors.green(command))
+        if codec == 'libaom-av1':
+            print(colors.bg_yellow("WARNING: libaom-av1 SUCKS, use hwaccel, don't use AV1 or install non-lightweight ffmpeg with a better av1 codec installed."))
+        
+        print('New command: ' + colors.green(f'{hwaccel} -y {command}'))
 
     print('\n\n')
     
