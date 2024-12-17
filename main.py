@@ -32,7 +32,9 @@ vid_format = ''
 hwaccel = ''
 "HW-accel config"
 
-filter_str = ''
+vid_filter_str = ''
+"FFMPEG filters"
+audio_filter_str = ''
 "FFMPEG filters"
 
 
@@ -163,6 +165,7 @@ if __name__ == "__main__":
             f"{colors.green('AV')} to set {colors.cyan('AV1')}, \n" \
             f"{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}),\n" \
             f"{colors.green('f')} to set framerate to {colors.cyan('30fps')},\n" \
+            f"{colors.green('a')} to normalize audio,\n" \
             f"{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')},\n" \
             f"{colors.green('n')} to create a new file (without overriding current one).\n" \
             f"\n" \
@@ -179,7 +182,9 @@ if __name__ == "__main__":
         if 'HE' in x: codec = 'libx265'
         if 'AV' in x: codec = 'libaom-av1'
         
-        if 'f' in x: filter_str += 'fps=30'
+        if 'f' in x: vid_filter_str += ' fps=30'
+        
+        if 'a' in x: audio_filter_str += ' loudnorm'
         
         max_crf = 51
         if codec == 'libaom-av1': max_crf = 63
@@ -212,8 +217,11 @@ if __name__ == "__main__":
         if vid_format != '':
             command += ' -vf ' + vid_format
         
-        if filter_str != '':
-            command += ' -filter:v ' + filter_str
+        if vid_filter_str != '':
+            command += ' -filter:v' + vid_filter_str
+            
+        if audio_filter_str != '':
+            command += ' -filter:a' + audio_filter_str
         
         if 'c' in x:
             print(f'default extension: {colors.green(extension)}')
