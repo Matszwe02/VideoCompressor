@@ -13,13 +13,22 @@
 ### Windows
 Drag and drop a directory or single / multiple video files or a directory into `compressor.bat`. The videos will be replaced.
 
-You can also link `compressor.bat` into `C:\Users\$USER\AppData\Roaming\Microsoft\Windows\SendTo` to link it to right click `Send To`.
+You can also link `compressor.bat` into `%USERPROFILE%\AppData\Roaming\Microsoft\Windows\SendTo` to link it to right click `Send To`.
+Open that path by running `python.exe .\main.py --sendto`
 
 ### All platforms
 
 If you open the program directly, there will be a video selection dialog.
 
-For non-windows ensure you have ffmpeg in `PATH`
+For non-windows ensure you have ffmpeg in `PATH` or in repo directory
+
+### CLI
+
+VideoCompressor supports command line parameters:
+- `-24HE` or similar (check VideoCompressor's parameters menu) to automatically start compressing with selected parameters
+- `--sendto` opens SendTo directory for a handy access to saved presets
+
+In `CustomPreset.bat` you can see the implementation. Create a link to these files in `SendTo` to add these presets to your context menu.
 
 ## Additional info
 

@@ -14,37 +14,64 @@ import colors
 from tkinter import filedialog
 
 
-codec = 'h264'
-"codec - h264 or libx265"
+formats = ["mp4", "avi", "mkv", "mpg", "mpeg", "wmv", "mov", "webm"]
 
-crf = 24
-"Constant Rate Factor - how much it's compressed - default 24"
 
-extension = 'mp4'
+class VideoSettings():
+    def __init__(self):
+        self.codec = 'h264'
+        self.crf = 24
+        self.extension = 'mp4'
+        self.new_video_append = ''
+        self.scale = ''
+        self.hwaccel = ''
+        self.hwaccel_str = ''
+        self.vid_filter_str = ''
+        self.audio_filter_str = ''
+        self.command = f'-vcodec {self.codec} -acodec aac -crf {self.crf}'
 
-new_video_append = ''
 
-command = f'-vcodec {codec} -acodec aac -crf {crf}'
+    def generate(self, video_file: str):
+        """
+        retrns:
+            tuple[vid_name, final_filename, cmd]
+        """
+        vid_name = './' + uuid.uuid4().hex + '.'  + self.extension
+        final_filename = '.'.join(video_file.split('.')[:-1]) + self.new_video_append + '.' + self.extension
+        cmd = shlex.split(f'ffmpeg{self.hwaccel_str} -y -i "{video_file}" {self.command} {vid_name}')
+        return (vid_name, final_filename, cmd)
 
-vid_format = ''
-"Pixel format of video, for example 'scale=1080:-1'"
 
-hwaccel = ''
-"HW-accel config"
+    def gen_command(self):
+        self.crf = min(self.crf, 63)
+        if self.codec != 'libaom-av1': self.crf = min(self.crf, 51)
+        crf_str = f'-crf {self.crf}'
+        scale_str = 'scale'
+        if self.hwaccel:
+            self.hwaccel_str = " -hwaccel cuda -hwaccel_output_format cuda"
+            crf_str = f'-cq:v {self.crf}'
+            scale_str = 'scale_cuda'
+            cuda_codecs = {'libx265' : "hevc_nvenc", 'libaom-av1': "av1_nvenc"}
+            self.codec = cuda_codecs.get(self.codec, 'h264_nvenc')
+        
+        vid_format = ''
+        if self.scale:
+            vid_format = scale_str + self.scale
+        
+        command = f'-vcodec {self.codec} -acodec aac {crf_str}'
+        if vid_format: command += ' -vf ' + vid_format
+        if self.vid_filter_str: command += ' -filter:v' + self.vid_filter_str
+        if self.audio_filter_str: command += ' -filter:a' + self.audio_filter_str
+        
+        self.command = command
 
-vid_filter_str = ''
-"FFMPEG filters"
-audio_filter_str = ''
-"FFMPEG filters"
 
 
 
 def check_file_name(name: str):
     base, ext = os.path.splitext(name)
     new_name = f"{base}{ext}"
-    
     i = 1
-    
     while os.path.exists(new_name):
         new_name = f"{base}{i}{ext}"
         i += 1
@@ -64,23 +91,17 @@ def get_num_frames(video_file):
         
     except Exception:
         pass
-    
     return 0
 
 
-def compress_file(video_file):
+def compress_file(video_file: str, video_settings: VideoSettings):
     
     num_frames = get_num_frames(video_file)
+    vid_name, final_filename, cmd = video_settings.generate(video_file)
     
-    vid_name = './' + uuid.uuid4().hex + '.'  + extension
-
-    final_filename = '.'.join(video_file.split('.')[:-1]) + new_video_append + '.' + extension
-    cmd = shlex.split(f'ffmpeg{hwaccel} -y -i "{video_file}" {command} {vid_name}')
-    
-    print(colors.cyan(' '.join(cmd)))
+    print(colors.cyan(shlex.join(cmd)))
         
     lines = ''
-        
     ffmpeg = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     
     try:
@@ -120,7 +141,7 @@ def compress_file(video_file):
     
     while True:
         try:
-            if new_video_append == '':
+            if video_settings.new_video_append == '':
                 os.remove(video_file)
             else:
                 final_filename = check_file_name(final_filename)
@@ -137,28 +158,58 @@ def find_videos(directory):
     videos = []
     for root, dirs, files in os.walk(directory):
         for file in files:
-            if file.split('.')[-1] in ['mp4', 'avi', 'mkv', 'mpg', 'mpeg', 'wmv', 'mov', 'webm']:
+            if file.split('.')[-1] in formats:
                 videos.append(os.path.join(root, file))
     return videos
 
-if __name__ == "__main__":
 
-    args = sys.argv[1:]
-    if len(args) == 0:
-        file_paths = filedialog.askopenfilenames(filetypes=[("Video Files", "*.mp4 *.avi *.mkv *.mpg *.mpeg *.wmv *.mov *.webm"), ("All files", "*")])
-        for file in file_paths:
-            args.append(file)
 
-    print(f"using default params: {colors.green(command)}")
-    print(colors.cyan("(Ctrl + C to set custom)\n"))
+def decode_params(params: str, vs: VideoSettings):
+    
+    if 'HE' in params: vs.codec = 'libx265'
+    if 'AV' in params: vs.codec = 'libaom-av1'
+    if 'f' in params: vs.vid_filter_str += ' fps=30'
+    if 'a' in params: vs.audio_filter_str += ' loudnorm'
+    
+    vs.crf = int(''.join(filter(str.isdigit, params))) or vs.crf
+    
+    if 'h' in params: vs.hwaccel = 'cuda'
+    
+    if 'FHD' in params: vs.scale = '=-1:1080'
+    elif 'HD' in params: vs.scale = '=-1:720'
+    elif 'SD' in params: vs.scale = '=-1:480'
+    
+    if 'n' in params: vs.new_video_append = '_copy'
+    
+    if 'c' in params:
+        print(f'default extension: {colors.green(vs.extension)}')
+        new_extension = input("Video final extension: ")
+        if new_extension.__len__() > 1: vs.extension = new_extension
+        print(f'default command: {colors.green(vs.command)}')
+        new_command = input("command: ")
+        if new_command.__len__() > 1: vs.command = new_command
+    else:
+        vs.gen_command()
+
+
+
+def main(videos: list[str], new_params: str):
+    vs = VideoSettings()
+    
+    if new_params:
+        decode_params(new_params, vs)
+        print('Command: ' + colors.green(f'ffmpeg {vs.hwaccel} -y {vs.command}\n\n'))
+        for i, vid in enumerate(videos):
+            print(f'Compressing {colors.green(i+1)} of {colors.green(videos.__len__())}')
+            compress_file(str(Path(vid).absolute()), vs)
+            return
+    
+    print(f"using default params: {colors.green(vs.command)}")
+    print(colors.cyan("(Ctrl + C to set custom)\n\n"))
     try:
         time.sleep(5)
-        customparams = 'N'
+        
     except KeyboardInterrupt:
-        customparams = 'y'
-
-
-    if customparams.lower() == 'y':
         print(
             f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n" \
             f"{colors.green('HE')} to set {colors.cyan('HEVC/h265')} (default {colors.cyan('h264')}), \n" \
@@ -175,82 +226,40 @@ if __name__ == "__main__":
             f"Type {colors.green('c')} to set custom command\n"
         )
         
-        x = input(colors.green('> '))
+        decode_params(input(colors.green('> ')), vs)
         
-        scale_str = 'scale'
-        
-        if 'HE' in x: codec = 'libx265'
-        if 'AV' in x: codec = 'libaom-av1'
-        
-        if 'f' in x: vid_filter_str += ' fps=30'
-        
-        if 'a' in x: audio_filter_str += ' loudnorm'
-        
-        max_crf = 51
-        if codec == 'libaom-av1': max_crf = 63
-        
-        digits = ''.join(filter(str.isdigit, x))
-        if digits and int(digits) in range(0, max_crf):
-            crf = int(digits)
-        
-        crf_str = f'-crf {crf}'
-        
-        if 'h' in x:
-            hwaccel = " -hwaccel cuda -hwaccel_output_format cuda"
-            if codec == 'libx265': codec = "hevc_nvenc"
-            elif codec == 'libaom-av1': codec = "av1_nvenc"
-            else: codec = 'h264_nvenc'
-            
-            scale_str = 'scale_cuda'
-            crf_str = f'-cq:v {crf}'
-        
-        
-        if 'FHD' in x: vid_format = scale_str + '=-1:1080'
-        elif 'HD' in x: vid_format = scale_str + '=-1:720'
-        elif 'SD' in x: vid_format = scale_str + '=-1:480'
-        
-        if 'n' in x: new_video_append = '_copy'
-        
-        
-        command = f'-vcodec {codec} -acodec aac {crf_str}'
-        
-        if vid_format != '':
-            command += ' -vf ' + vid_format
-        
-        if vid_filter_str != '':
-            command += ' -filter:v' + vid_filter_str
-            
-        if audio_filter_str != '':
-            command += ' -filter:a' + audio_filter_str
-        
-        if 'c' in x:
-            print(f'default extension: {colors.green(extension)}')
-            new_extension = input("Video final extension: ")
-            if new_extension.__len__() > 1: extension = new_extension
-            print(f'default command: {colors.green(command)}')
-            new_command = input("command: ")
-            if new_command.__len__() > 1: command = new_command
-        
-        if codec == 'libaom-av1':
+        if vs.codec == 'libaom-av1':
             print(colors.bg_yellow("WARNING: libaom-av1 SUCKS, use hwaccel, don't use AV1 or install non-lightweight ffmpeg with a better av1 codec installed."))
         
-        print('New command: ' + colors.green(f'{hwaccel} -y {command}'))
-
-    print('\n\n')
+        print('New command: ' + colors.green(f'{vs.hwaccel} -y {vs.command}\n\n'))
     
-    time.sleep(0.2)   
+    for i, vid in enumerate(videos):
+        print(f'Compressing {colors.green(i+1)} of {colors.green(videos.__len__())}')
+        compress_file(str(Path(vid).absolute()), vs)
+
+
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    
+    new_params = ''
+    
+    if '--sendto' in args:
+        os.system('explorer %USERPROFILE%\\AppData\\Roaming\\Microsoft\\Windows\\SendTo')
+        exit()
+    
+    if args and args[0].startswith('-'):
+        new_params = args.pop(0).lstrip('-')
+    
+    if len(args) == 0:
+        file_paths = filedialog.askopenfilenames(filetypes=[("Video Files", "*." + " *.".join(formats)), ("All files", "*")])
+        for file in file_paths:
+            args.append(file)
     videos = []
-
-
     for arg in args:
         if os.path.isdir(arg):
             videos.extend(find_videos(arg))
-        elif os.path.isfile(arg) and arg.split('.')[-1] in ['mp4', 'avi', 'mkv', 'mpg', 'mpeg', 'wmv', 'mov', 'webm']:
+        elif os.path.isfile(arg) and arg.split('.')[-1] in formats:
             videos.append(arg)
-
-
-    for i, vid in enumerate(videos):
-        print(f'Compressing {colors.green(i+1)} of {colors.green(videos.__len__())}')
-        video_file = Path(vid)
-        compress_file(video_file.absolute().__str__())
-            
+    
+    main(videos, new_params)
