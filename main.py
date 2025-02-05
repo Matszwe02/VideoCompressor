@@ -47,18 +47,20 @@ class VideoSettings():
         if self.codec != 'libaom-av1': self.crf = min(self.crf, 51)
         crf_str = f'-crf {self.crf}'
         scale_str = 'scale'
+        self.hwaccel_str = ''
+        codec = self.codec
         if self.hwaccel:
             self.hwaccel_str = " -hwaccel cuda -hwaccel_output_format cuda"
             crf_str = f'-cq:v {self.crf}'
             scale_str = 'scale_cuda'
             cuda_codecs = {'libx265' : "hevc_nvenc", 'libaom-av1': "av1_nvenc"}
-            self.codec = cuda_codecs.get(self.codec, 'h264_nvenc')
+            codec = cuda_codecs.get(self.codec, 'h264_nvenc')
         
         vid_format = ''
         if self.scale:
             vid_format = scale_str + self.scale
         
-        command = f'-vcodec {self.codec} -acodec aac {crf_str}'
+        command = f'-vcodec {codec} -acodec aac {crf_str}'
         if vid_format: command += ' -vf ' + vid_format
         if self.vid_filter_str: command += ' -filter:v' + self.vid_filter_str
         if self.audio_filter_str: command += ' -filter:a' + self.audio_filter_str
@@ -78,6 +80,7 @@ def check_file_name(name: str):
     return new_name
 
 
+
 def get_num_frames(video_file):
     
     try:
@@ -92,6 +95,7 @@ def get_num_frames(video_file):
     except Exception:
         pass
     return 0
+
 
 
 def compress_file(video_file: str, video_settings: VideoSettings):
@@ -123,6 +127,7 @@ def compress_file(video_file: str, video_settings: VideoSettings):
         ffmpeg.terminate()
         
         if returncode > 0:
+            if 'No device available for decoder' in lines: raise RuntimeError('No supported GPU is present')
             print(colors.red(f'FFMPEG ERROR with {video_file} :\n'))
             time.sleep(1)
             print(colors.bg_red(lines))
@@ -131,6 +136,7 @@ def compress_file(video_file: str, video_settings: VideoSettings):
             return
     
     except BaseException as e:
+        if 'No device available for decoder' in lines: raise RuntimeError('No supported GPU is present')
         
         ffmpeg.wait()
         ffmpeg.communicate()
@@ -171,7 +177,7 @@ def decode_params(params: str, vs: VideoSettings):
     if 'f' in params: vs.vid_filter_str += ' fps=30'
     if 'a' in params: vs.audio_filter_str += ' loudnorm'
     
-    vs.crf = int(''.join(filter(str.isdigit, params))) or vs.crf
+    vs.crf = int(''.join(filter(str.isdigit, params)) or vs.crf) or vs.crf
     
     if 'h' in params: vs.hwaccel = 'cuda'
     
@@ -196,46 +202,50 @@ def decode_params(params: str, vs: VideoSettings):
 def main(videos: list[str], new_params: str):
     vs = VideoSettings()
     
-    if new_params:
-        decode_params(new_params, vs)
-        print('Command: ' + colors.green(f'ffmpeg {vs.hwaccel} -y {vs.command}\n\n'))
+    if not new_params:
+    
+        print(f"using default params: {colors.green(vs.command)}")
+        print(colors.cyan("(Ctrl + C to set custom)\n\n"))
+        try:
+            time.sleep(5)
+            
+        except KeyboardInterrupt:
+            print(
+                f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n" \
+                f"{colors.green('HE')} to set {colors.cyan('HEVC/h265')} (default {colors.cyan('h264')}), \n" \
+                f"{colors.green('AV')} to set {colors.cyan('AV1')}, \n" \
+                f"{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}),\n" \
+                f"{colors.green('f')} to set framerate to {colors.cyan('30fps')},\n" \
+                f"{colors.green('a')} to normalize audio,\n" \
+                f"{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')},\n" \
+                f"{colors.green('n')} to create a new file (without overriding current one).\n" \
+                f"\n" \
+                f"You can combine them, for example {colors.green('HEhn24HD')}\n" \
+                f"{colors.cyan('24')} is good HD quality and {colors.cyan('42')} is acceptable SD quality for {colors.cyan('h264')} and {colors.cyan('HEVC')}\n" \
+                f"\n" \
+                f"Type {colors.green('c')} to set custom command\n"
+            )
+            
+            decode_params(input(colors.green('> ')), vs)
+            
+            if vs.codec == 'libaom-av1':
+                print(colors.bg_yellow("WARNING: libaom-av1 SUCKS, use hwaccel, don't use AV1 or install non-lightweight ffmpeg with a better av1 codec installed."))
+            
+            print('New command: ' + colors.green(f'{vs.hwaccel} -y {vs.command}\n\n'))
+    else:
+            print('Command: ' + colors.green(f'{vs.hwaccel} -y {vs.command}\n\n'))
+            decode_params((new_params), vs)
+    try:
         for i, vid in enumerate(videos):
             print(f'Compressing {colors.green(i+1)} of {colors.green(videos.__len__())}')
             compress_file(str(Path(vid).absolute()), vs)
-            return
-    
-    print(f"using default params: {colors.green(vs.command)}")
-    print(colors.cyan("(Ctrl + C to set custom)\n\n"))
-    try:
-        time.sleep(5)
-        
-    except KeyboardInterrupt:
-        print(
-            f"Type {colors.green('0-51')} to set {colors.cyan('CRF')}, \n" \
-            f"{colors.green('HE')} to set {colors.cyan('HEVC/h265')} (default {colors.cyan('h264')}), \n" \
-            f"{colors.green('AV')} to set {colors.cyan('AV1')}, \n" \
-            f"{colors.green('SD')}, {colors.green('HD')}, {colors.green('FHD')} to rescale ({colors.cyan('480p, 720p, 1080p')}),\n" \
-            f"{colors.green('f')} to set framerate to {colors.cyan('30fps')},\n" \
-            f"{colors.green('a')} to normalize audio,\n" \
-            f"{colors.green('h')} for {colors.cyan('Hardware Acceleration (CUDA)')},\n" \
-            f"{colors.green('n')} to create a new file (without overriding current one).\n" \
-            f"\n" \
-            f"You can combine them, for example {colors.green('HEhn24HD')}\n" \
-            f"{colors.cyan('24')} is good HD quality and {colors.cyan('42')} is acceptable SD quality for {colors.cyan('h264')} and {colors.cyan('HEVC')}\n" \
-            f"\n" \
-            f"Type {colors.green('c')} to set custom command\n"
-        )
-        
-        decode_params(input(colors.green('> ')), vs)
-        
-        if vs.codec == 'libaom-av1':
-            print(colors.bg_yellow("WARNING: libaom-av1 SUCKS, use hwaccel, don't use AV1 or install non-lightweight ffmpeg with a better av1 codec installed."))
-        
-        print('New command: ' + colors.green(f'{vs.hwaccel} -y {vs.command}\n\n'))
-    
-    for i, vid in enumerate(videos):
-        print(f'Compressing {colors.green(i+1)} of {colors.green(videos.__len__())}')
-        compress_file(str(Path(vid).absolute()), vs)
+    except RuntimeError:
+        vs.hwaccel = False
+        print(colors.yellow('Falling back to CPU encoding'))
+        vs.gen_command()
+        for i, vid in enumerate(videos):
+            print(f'Compressing {colors.green(i+1)} of {colors.green(videos.__len__())}')
+            compress_file(str(Path(vid).absolute()), vs)
 
 
 
